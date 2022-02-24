@@ -115,18 +115,10 @@ from ansible.module_utils.urls import open_url
 from ansible.plugins.callback import CallbackBase
 
 
-PLAYBOOK_START_TXT = """\
-Started playbook {playbook}
-
-From '{hostname}'
-By user '{username}'
-"""
+PLAYBOOK_START_TXT = "Started playbook {playbook} by user '{username}'"
 
 PLAYBOOK_ERROR_TXT = """\
 Playbook {playbook} Failure !
-
-From '{hostname}'
-By user '{username}'
 
 '{task}' failed on {host}
 
@@ -134,15 +126,7 @@ debug: {result}
 """
 
 PLAYBOOK_STATS_TXT = """\
-Playbook {playbook}
-Duration: {duration}
-Status: {status}
-
-From '{hostname}'
-By user '{username}'
-
-Result:
-{summary}
+Playbook {playbook} executed in {duration} seconds on hosts: {hosts}
 """
 
 
@@ -170,7 +154,6 @@ class CallbackModule(CallbackBase):
 
         self.headers = {'Content-Type': 'application/json'}
         self.force_basic_auth = False
-        self.hostname = socket.gethostname()
         self.username = getpass.getuser()
         self.start_time = datetime.now()
         self.errors = 0
@@ -202,42 +185,41 @@ class CallbackModule(CallbackBase):
 
     def v2_playbook_on_start(self, playbook):
         self.playbook = playbook._file_name
-        text = PLAYBOOK_START_TXT.format(playbook=self.playbook, hostname=self.hostname,
-                                         username=self.username)
+        text = PLAYBOOK_START_TXT.format(playbook=self.playbook, username=self.username)
         data = {
             'time': to_millis(self.start_time),
             'text': text,
-            'tags': ['ansible', 'ansible_event_start', self.playbook, self.hostname]
+            'tags': ['ansible', 'ansible_event_start', self.playbook]
         }
         self._send_annotation(data)
 
     def v2_playbook_on_stats(self, stats):
         end_time = datetime.now()
         duration = end_time - self.start_time
-        summarize_stat = {}
+        hosts = []
         for host in stats.processed.keys():
-            summarize_stat[host] = stats.summarize(host)
+            hosts.append(host)
 
         status = "FAILED"
         if self.errors == 0:
             status = "OK"
 
-        text = PLAYBOOK_STATS_TXT.format(playbook=self.playbook, hostname=self.hostname,
+        text = PLAYBOOK_STATS_TXT.format(playbook=self.playbook,
                                          duration=duration.total_seconds(),
                                          status=status, username=self.username,
-                                         summary=json.dumps(summarize_stat))
+                                         hosts=" ".join(hosts))
 
         data = {
             'time': to_millis(self.start_time),
             'timeEnd': to_millis(end_time),
             'isRegion': True,
             'text': text,
-            'tags': ['ansible', 'ansible_report', self.playbook, self.hostname]
+            'tags': ['ansible', 'ansible_report', self.playbook]
         }
         self._send_annotations(data)
 
     def v2_runner_on_failed(self, result, ignore_errors=False, **kwargs):
-        text = PLAYBOOK_ERROR_TXT.format(playbook=self.playbook, hostname=self.hostname,
+        text = PLAYBOOK_ERROR_TXT.format(playbook=self.playbook,
                                          username=self.username, task=result._task,
                                          host=result._host.name, result=self._dump_results(result._result))
         if ignore_errors:
@@ -245,7 +227,7 @@ class CallbackModule(CallbackBase):
         data = {
             'time': to_millis(datetime.now()),
             'text': text,
-            'tags': ['ansible', 'ansible_event_failure', self.playbook, self.hostname]
+            'tags': ['ansible', 'ansible_event_failure', self.playbook]
         }
         self.errors += 1
         self._send_annotations(data)
