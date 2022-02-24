@@ -116,6 +116,7 @@ from ansible.plugins.callback import CallbackBase
 
 
 PLAYBOOK_START_TXT = "Started playbook {playbook} by user '{username}'"
+PLAYBOOK_END_TXT = "Finished playbook {playbook} in {duration} seconds on hosts: {hosts}"
 
 PLAYBOOK_ERROR_TXT = """\
 Playbook {playbook} Failure !
@@ -217,6 +218,16 @@ class CallbackModule(CallbackBase):
             'tags': ['ansible', 'ansible_report', self.playbook]
         }
         self._send_annotations(data)
+
+        text = PLAYBOOK_END_TXT.format(playbook=self.playbook,
+                                       duration=duration.total_seconds(),
+                                       hosts=" ".join(hosts))
+        data = {
+            'time': to_millis(end_time),
+            'text': text,
+            'tags': ['ansible', 'ansible_event_end', self.playbook]
+        }
+        self._send_annotation(data)
 
     def v2_runner_on_failed(self, result, ignore_errors=False, **kwargs):
         text = PLAYBOOK_ERROR_TXT.format(playbook=self.playbook,
